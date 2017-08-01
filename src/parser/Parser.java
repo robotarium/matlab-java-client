@@ -39,14 +39,23 @@ public class Parser<ReceiveType, PublishType> implements IShutdownable{
 	}
 
 	public MessageTuple<ReceiveType> getMessageBlocking(String channel) throws InterruptedException {
+//		synchronized(map.get(channel).receiver) {
+//			return map.get(channel).receiver.take();
+//		}
 		return map.get(channel).receiver.take();
 	}
 	
 	public MessageTuple<ReceiveType> getMessage(String channel) {
+//		synchronized(map.get(channel).receiver) {
+//			return map.get(channel).receiver.poll();
+//		}
 		return map.get(channel).receiver.poll();
 	}
 	
 	public MessageTuple<ReceiveType> getMessageTimeout(String channel, int milliseconds) throws InterruptedException {
+//		synchronized(map.get(channel).receiver) {
+//			return map.get(channel).receiver.poll(milliseconds, TimeUnit.MILLISECONDS);
+//		}
 		return map.get(channel).receiver.poll(milliseconds, TimeUnit.MILLISECONDS);
 	}
 	
@@ -206,23 +215,28 @@ public class Parser<ReceiveType, PublishType> implements IShutdownable{
 					}
 					
 					LinkedBlockingQueue<MessageTuple<ReceiveType>> lbq = map.get(m.channel).receiver;
+					
 					boolean result = lbq.offer(m);
 					
-					//Ensure we only store one message at a time.  Turns out this has little performance impact
-					if(!result) {
-						try {
-							lbq.take();
-						} catch (InterruptedException e) {
-							running = false;
-							e.printStackTrace();
-						} 
-						try {
-							lbq.put(m);
-						} catch (InterruptedException e) {
-							running = false;
-							e.printStackTrace();
-						}
-					}		
+//					synchronized(map.get(m.channel).receiver) {					
+//						boolean result = lbq.offer(m);					
+//						
+//						//Ensure we only store one message at a time.  Turns out this has little performance impact
+//						if(!result) {
+//							try {
+//								lbq.take();
+//							} catch (InterruptedException e) {
+//								running = false;
+//								e.printStackTrace();
+//							} 
+//							try {
+//								lbq.put(m);
+//							} catch (InterruptedException e) {
+//								running = false;
+//								e.printStackTrace();
+//							}
+//						}					
+//					}
 				}
 				return null;
 			}		
@@ -241,23 +255,30 @@ public class Parser<ReceiveType, PublishType> implements IShutdownable{
 					MessageTuple<ReceiveType> m = pubsubInterface.getMessage();
 					
 					LinkedBlockingQueue<MessageTuple<ReceiveType>> lbq = map.get(m.channel).receiver;
-					boolean result = lbq.offer(m);
 					
-					//Ensure we only store one message at a time.  Turns out this has little performance impact
-					if(!result) {
-						try {
-							lbq.take();
-						} catch (InterruptedException e) {
-							running = false;
-							e.printStackTrace();
-						} 
-						try {
-							lbq.put(m);
-						} catch (InterruptedException e) {
-							running = false;
-							e.printStackTrace();
-						}
-					}		
+					boolean result = lbq.offer(m);	
+					
+//					synchronized(map.get(m.channel).receiver) {		
+//
+//						boolean result = lbq.offer(m);					
+//						
+//						//Ensure we only store one message at a time.  Turns out this has little performance impact
+//						if(!result) {
+//							try {
+//								lbq.take();
+//							} catch (InterruptedException e) {
+//								running = false;
+//								e.printStackTrace();
+//							} 
+//							
+//							try {
+//								lbq.put(m);
+//							} catch (InterruptedException e) {
+//								running = false;
+//								e.printStackTrace();
+//							}
+//						}					
+//					}		
 				}
 				return null;
 			}		
@@ -301,7 +322,6 @@ public class Parser<ReceiveType, PublishType> implements IShutdownable{
 					
 					MessageTuple<PublishType> m;
 					try {
-						//System.out.println(sender.size());
 						m = sender.take();
 						pubsubInterface.publish(m);
 					} catch (InterruptedException e) {

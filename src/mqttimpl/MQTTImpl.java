@@ -21,7 +21,7 @@ import com.google.gson.JsonParser;
 import interfaces.IPubSubbable;
 import parser.MessageTuple;
 
-public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallback {
+public class MQTTImpl implements IPubSubbable<String, String>, MqttCallback {
 	
 	//TODO: Change Double[] publish to String and do the encoding myself
 	
@@ -30,12 +30,13 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 	final String id = "JavaAPI" +  System.currentTimeMillis();
 	final MemoryPersistence persistence = new MemoryPersistence();
 	MqttClient client;
-	final LinkedBlockingQueue<MessageTuple<Double[][]>> recQ = new LinkedBlockingQueue<MessageTuple<Double[][]>>();
+	final LinkedBlockingQueue<MessageTuple<String>> recQ = new LinkedBlockingQueue<MessageTuple<String>>();
 	final JsonParser parser = new JsonParser();
 	final Gson g = new Gson();
 	final MqttConnectOptions connOpts = new MqttConnectOptions();
 	
 	public MQTTImpl(String host, int port) {
+		
 		broker = "tcp://" + host + ":" + port;
 	    connOpts.setCleanSession(true);
 		try {
@@ -57,6 +58,8 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 				// TODO Auto-generated catch block
 				e.printStackTrace();
 			}
+		} else {
+			System.out.println("Couldn't connect to server");
 		}
 	}
 
@@ -65,7 +68,7 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 	public void shutdown() {
 		// TODO Auto-generated method stub
 		try {
-			client.disconnectForcibly();
+			client.disconnect();
 		} catch (MqttException e) {
 			System.err.println("Didn't shut down Java MQTT client correctly...");
 			e.printStackTrace();
@@ -93,7 +96,7 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 	}
 
 	@Override
-	public MessageTuple<Double[][]> getMessage() {
+	public MessageTuple<String> getMessage() {
 		try {
 			return recQ.take();
 		} catch (InterruptedException e) {
@@ -104,18 +107,9 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 	}
 
 	@Override
-	public void publish(MessageTuple<Double[]> message) {
-				
-		if(message.message.length != 2) {
-			System.err.println("Received message sent to " + message.channel + " that is not of size 2.");
-			return;
-		}
+	public void publish(MessageTuple<String> message) {
 		
-		RobotInput ri = new RobotInput(message.message[0], message.message[1]);
-		
-		String msg = g.toJson(ri, RobotInput.class);
-		
-		MqttMessage m = new MqttMessage(msg.getBytes());
+		MqttMessage m = new MqttMessage(message.message.getBytes());
 		
 		m.setQos(this.qos);
 		
@@ -153,62 +147,13 @@ public class MQTTImpl implements IPubSubbable<Double[][], Double[]>, MqttCallbac
 		
 		if(msg.equals("null")) {
 			return;
-		}
-			
-		JsonElement element = parser.parse(msg);
-
-		JsonObject obj = element.getAsJsonObject();
-		Set<Map.Entry<String, JsonElement>> entries = obj.entrySet();
-		
-		if(entries.isEmpty()) {
-			return;
-		}
-		
-		Double[][] data = new Double[5][entries.size()];
-		int i = 0;
-		
-		for (Map.Entry<String, JsonElement> entry: entries) {
-			
-		    //System.out.println(entry.getKey());
-		    RobotStateInfo s = g.fromJson(entry.getValue(), RobotStateInfo.class);
-		    data[0][i] = Double.valueOf(entry.getKey());
-		    data[1][i] = s.x; 
-		    data[2][i]  = s.y; 
-		    data[3][i] = s.theta;
-		    data[4][i] = s.powerData;
-		    i++;
-		}
+		}			
 		
 		//Parse message into reasonable format
 		try {
-			recQ.put(new MessageTuple<Double[][]>(topic, data));
+			recQ.put(new MessageTuple<String>(topic, msg));
 		} catch (InterruptedException e) {			
 			e.printStackTrace();
 		}
-	}
-	
-	private class RobotInput {
-		public final double v; 
-		public final double w; 
-		
-		public RobotInput(double v, double w) {
-			this.v = v; 
-			this.w = w;
-		}
-	}
-	
-	private class RobotStateInfo {
-		
-		public final double x; 
-		public final double y; 
-		public final double theta; 
-		public final double powerData;
-		
-		public RobotStateInfo(double x, double y, double theta, double powerData) {
-			this.x = x; 
-			this.y = y; 
-			this.theta = theta;
-			this.powerData = powerData;
-		}
-	}
+	}	
 }

@@ -11,12 +11,12 @@ public class MQTTParser {
 	// Hard-coded channel for the tracker data
 	public final String trackerChannel = "overhead_tracker/all_robot_pose_data";
 
-	public Parser<Double[][], Double[]> mqttParser; 
+	public Parser<String, String> mqttParser; 
 	
-	public MQTTParser() {
+	public MQTTParser(String host, int port) {
 		
 		// Make sure we attach to a specific host/port		
-		mqttParser = new ParserBuilder<Double[][],Double[]>(new MQTTImpl("192.168.1.2", 1884))
+		mqttParser = new ParserBuilder<String, String>(new MQTTImpl(host, port))
 				.withSubscriptionTo(trackerChannel)
 				.build();
 	}
