@@ -39,6 +39,7 @@ public class MQTTImpl implements IPubSubbable<String, String>, MqttCallback {
 		
 		broker = "tcp://" + host + ":" + port;
 	    connOpts.setCleanSession(true);
+	    
 		try {
 			client = new MqttClient(broker, id, persistence);
 		} catch (MqttException e) {

@@ -21,8 +21,8 @@ public final class Parsers {
 			
 	public static void main(String[] args) throws InterruptedException, IOException, MqttException {
 		
-		Parsers.getParserSingleton("192.168.1.2", 1884);	
-		
+		Parsers.getParserSingleton("localhost", 1883);
+
 		while(true) {
 						
 			String data = mqttParser.mqttParser.getMessageTimeout("overhead_tracker/all_robot_pose_data", 15000).message;
