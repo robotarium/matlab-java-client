@@ -55,6 +55,19 @@ public class VizierMqttClient implements MqttCallback {
 
     }
 
+    public void publish(String topic, String message) {
+
+        var mqttMessage = new MqttMessage(message.getBytes());
+        mqttMessage.setQos(0);
+
+        try {
+            this.client.publish(topic, mqttMessage);
+        } catch (MqttException e) {
+            System.err.println("Unable to publish MQTT message");
+            e.printStackTrace();
+        }
+    }
+
     public void subscribeWithCallback(String topic, Consumer<String> callback) {
 
         try {
@@ -117,8 +130,14 @@ public class VizierMqttClient implements MqttCallback {
         //TODO Implement
     }
 
-    public static void main(String[] args) {
-       var client = new VizierMqttClient("192.168.1.24", 1883);
-       client.subscribeWithCallback("matlab_api/1", (a) -> System.out.println(new String(a)));
+    public static void main(String[] args) throws InterruptedException {
+        var time = System.currentTimeMillis();
+        var client = new VizierMqttClient("192.168.1.113", 1884);
+        //client.subscribeWithCallback("matlab_api/1", (a) -> System.out.println(new String(a)));
+
+        while(true) {
+            client.publish("matlab_api/1", new Double(System.currentTimeMillis()).toString());
+            Thread.sleep(33);
+        }
     }
 }
