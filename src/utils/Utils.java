@@ -34,11 +34,10 @@ public class Utils {
         return nodeName + '/' + "responses" + '/' + messageId;
     }
 
-    public static String createJsonRequest(String link, String method) {
+    public static String createJsonRequest(String id, String link, String method) {
 
-        String id = createMessageId();
         var r = new Request(id, method, link);
-        return new Gson().toJson(r);
+        return new Gson().toJson(r, Request.class);
     }
 
     public static String createJsonResponse(String type, int status, String body) {
@@ -62,22 +61,23 @@ public class Utils {
         return true;
     }
 
-    public static HashMap<String, JsonObject> parseNodeDescriptor(JsonObject nodeDescriptor) {
+    public static HashMap<String, LinkDescriptor> parseNodeDescriptor(JsonObject nodeDescriptor) {
         String endPoint = nodeDescriptor.get("end_point").getAsString();
 
         if(endPoint != null){
             ArrayList<String> path = new ArrayList<>();
             path.add(endPoint);
 
-            return parseNodeDescriptorHelper(path, new HashMap<String, JsonObject>(), nodeDescriptor);
+            return parseNodeDescriptorHelper(path, nodeDescriptor);
         }
 
         return null;
     }
 
-    private static HashMap<String, JsonObject> parseNodeDescriptorHelper(ArrayList<String> path, HashMap<String, JsonObject> result, JsonObject body) {
+    private static HashMap<String, LinkDescriptor> parseNodeDescriptorHelper(ArrayList<String> path, JsonObject body) {
 
         JsonObject links = body.getAsJsonObject("links");
+        HashMap<String, LinkDescriptor> result = new HashMap<>();
 
         // base case
         if(links == null) {
@@ -87,7 +87,7 @@ public class Utils {
 
             // If we're at the end of the recursive trail, add this info to the resulting hashmap
             String combinedPath = path.stream().reduce((a, b) -> a + "/" + b).get();
-            result.put(combinedPath, body);
+            result.put(combinedPath, new Gson().fromJson(body, LinkDescriptor.class));
 
             return result;
         }
@@ -111,35 +111,35 @@ public class Utils {
                 }
             }
 
-            parseNodeDescriptorHelper(newPath, result, x.getValue().getAsJsonObject());
+            result.putAll(parseNodeDescriptorHelper(newPath, x.getValue().getAsJsonObject()));
         }
 
         return result;
     }
 
-    public static ArrayList<JsonObject> parseNodeDescriptorRequests(JsonObject nodeDescriptor) {
+    public static ArrayList<LinkRequestDescriptor> parseNodeDescriptorRequests(JsonObject nodeDescriptor) {
 
         JsonArray requestsJson = nodeDescriptor.getAsJsonArray("requests");
-        ArrayList<JsonObject> requests = new ArrayList<>();
+        ArrayList<LinkRequestDescriptor> requests = new ArrayList<>();
 
         if(requestsJson == null) {
             return requests;
         }
 
         for (var x : requestsJson) {
-           var request = x.getAsJsonObject();
+           var request = new Gson().fromJson(x, LinkRequestDescriptor.class);
 
-           if(request.get("type") == null) {
+           if(request.getType() == null) {
                throw new IllegalArgumentException("Must have type fields specified in request");
            }
 
-           if(request.get("link") == null) {
+           if(request.getLink() == null) {
                throw new IllegalArgumentException("Must have link field specified in request");
            }
 
-           if(request.get("required") == null) {
-               request.add("required", new JsonParser().parse("true"));
-           }
+//           if(request.isRequired() == null) {
+//               request.add("required", new JsonParser().parse("true"));
+//           }
 
            // Request now has fields type, link, and required
             requests.add(request);

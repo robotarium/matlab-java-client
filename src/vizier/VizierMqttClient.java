@@ -52,7 +52,11 @@ public class VizierMqttClient implements MqttCallback {
     }
 
     public void stop() {
-
+        try {
+            this.client.disconnect();
+        } catch (MqttException e) {
+            e.printStackTrace();
+        }
     }
 
     public void publish(String topic, String message) {
@@ -79,15 +83,10 @@ public class VizierMqttClient implements MqttCallback {
         }
     }
 
-    public void subscribeWithQueue(String topic, Optional<BlockingQueue<String>> optionalQueue) {
+    public BlockingQueue<String> subscribeWithQueue(String topic) {
 
         final BlockingQueue<String> queue;
-
-        if(optionalQueue.isPresent()) {
-                queue = optionalQueue.get();
-        } else {
-            queue = new LinkedBlockingQueue<>();
-        }
+        queue = new LinkedBlockingQueue<>();
 
         Consumer<String> callback = b -> {
             try {
@@ -98,6 +97,8 @@ public class VizierMqttClient implements MqttCallback {
         };
 
         this.subscribeWithCallback(topic, callback);
+
+        return queue;
     }
 
     public void unsubscribe(String topic) {
@@ -128,16 +129,5 @@ public class VizierMqttClient implements MqttCallback {
     @Override
     public void deliveryComplete(IMqttDeliveryToken iMqttDeliveryToken) {
         //TODO Implement
-    }
-
-    public static void main(String[] args) throws InterruptedException {
-        var time = System.currentTimeMillis();
-        var client = new VizierMqttClient("192.168.1.113", 1884);
-        //client.subscribeWithCallback("matlab_api/1", (a) -> System.out.println(new String(a)));
-
-        while(true) {
-            client.publish("matlab_api/1", new Double(System.currentTimeMillis()).toString());
-            Thread.sleep(33);
-        }
     }
 }
