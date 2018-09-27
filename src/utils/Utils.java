@@ -137,10 +137,6 @@ public class Utils {
                throw new IllegalArgumentException("Must have link field specified in request");
            }
 
-//           if(request.isRequired() == null) {
-//               request.add("required", new JsonParser().parse("true"));
-//           }
-
            // Request now has fields type, link, and required
             requests.add(request);
         }
