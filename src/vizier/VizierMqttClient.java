@@ -106,7 +106,7 @@ public class VizierMqttClient implements MqttCallback {
         }
     }
 
-    public BlockingQueue<String> subscribeWithQueue(String topic) {
+    public BlockingQueue<String> subscribe(String topic) {
 
         final BlockingQueue<String> queue;
         queue = new LinkedBlockingQueue<>();

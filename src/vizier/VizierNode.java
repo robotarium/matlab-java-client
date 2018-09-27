@@ -1,15 +1,14 @@
 package vizier;
 
 import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import utils.*;
 
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
 import java.util.logging.Level;
@@ -26,18 +25,44 @@ public class VizierNode {
     private final ThreadPoolExecutor pool = new ScheduledThreadPoolExecutor(8);
     private final Logger logger = Logger.getGlobal();
 
+    private final Set<String> puttableLinks;
+    private final Set<String> publishableLinks;
+    private final Set<String> gettableLinks;
+    private final Set<String> subscribableLinks;
+
     /**
      * Creates a node on a vizier network.
      *
      * @param host IP for the MQTT broker
      * @param port Port for the MQTT broker.
-     * @param nodeDescriptor Node descrioptor in the required Vizier format.
+     * @param nodeDescriptor Node descriptor in the required Vizier format.
      */
     public VizierNode(String host, int port, JsonObject nodeDescriptor) {
 
         this.endpoint = nodeDescriptor.get("end_point").getAsString();
         this.nodeDescriptor = new ConcurrentHashMap<>(Utils.parseNodeDescriptor(nodeDescriptor));
         this.requests = Utils.parseNodeDescriptorRequests(nodeDescriptor);
+
+        // Determine the 4 classes of links
+        this.puttableLinks = this.nodeDescriptor.entrySet().stream()
+                .filter((x) -> x.getValue().getType() == "DATA")
+                .map((x) -> x.getKey())
+                .collect(Collectors.toSet());
+
+        this.publishableLinks = this.nodeDescriptor.entrySet().stream()
+                .filter((x) -> x.getValue().getType() == "STREAM")
+                .map((x) -> x.getKey())
+                .collect(Collectors.toSet());
+
+        this.gettableLinks = this.requests.stream()
+                .filter((x) -> x.getType() == "DATA")
+                .map((x) -> x.getLink())
+                .collect(Collectors.toSet());
+
+        this.subscribableLinks = this.requests.stream()
+                .filter((x) -> x.getType() == "STREAM")
+                .map((x) -> x.getLink())
+                .collect(Collectors.toSet());
 
         this.mqttClient = new VizierMqttClient(host, port);
 
@@ -92,13 +117,6 @@ public class VizierNode {
     }
 
     /**
-     * Starts all underlying threaded objects for the node and verifies required links.
-     */
-    public void start() {
-
-    }
-
-    /**
      * Stops all thread-bound tasks associated with this object.
      */
     public void shutdown() {
@@ -125,7 +143,7 @@ public class VizierNode {
 
         // Start request-response process.  In particular, the node must subscribe to the response channel before
         // sending the request to ensure that the response is not missed.
-        BlockingQueue<String> incomingMessages = this.mqttClient.subscribeWithQueue(remoteResponseLink);
+        BlockingQueue<String> incomingMessages = this.mqttClient.subscribe(remoteResponseLink);
         String message = null;
 
         for (int i = 0; i < attempts; i++){
@@ -151,6 +169,66 @@ public class VizierNode {
 
         // Otherwise, we got the response.  Decode it and return a response.
         return new Gson().fromJson(message, Response.class);
+    }
+
+    public void subscribeWithCallback(String topic, Consumer<String> callback) {
+
+        if(this.subscribableLinks.contains(topic)) {
+            this.mqttClient.subscribeWithCallback(topic, callback);
+        } else {
+            this.logger.log(Level.SEVERE, "Cannot subscribe to link (%s) not in subscribable links", topic);
+            throw new IllegalStateException();
+        }
+    }
+
+    public BlockingQueue<String> subscribe(String topic) {
+
+        if(this.subscribableLinks.contains(topic)) {
+            return this.mqttClient.subscribe(topic);
+        } else {
+            this.logger.log(Level.SEVERE, "Cannot subscribe to link (%s) not in subscribable links", topic);
+            throw new IllegalStateException();
+        }
+    }
+
+    public void publish(String topic, String message) {
+
+        if(this.publishableLinks.contains(topic)) {
+            this.mqttClient.publish(topic, message);
+        } else {
+            this.logger.log(Level.SEVERE, "Cannot publish to link (%s) not in publishable links", topic);
+            throw new IllegalStateException();
+        }
+    }
+
+    public void put(String topic, String body) {
+
+        if(this.puttableLinks.contains(topic)) {
+
+            LinkDescriptor current = this.nodeDescriptor.get(topic);
+            LinkDescriptor modified = new LinkDescriptor(body, current.getType());
+
+            this.nodeDescriptor.put(topic, modified);
+        } else {
+            this.logger.log(Level.SEVERE, "Cannot put to link (%s) not in puttable links", topic);
+            throw new IllegalStateException();
+        }
+    }
+
+    public Set<String> getPuttableLinks() {
+        return this.puttableLinks;
+    }
+
+    public Set<String> getPublishableLinks() {
+        return this.publishableLinks;
+    }
+
+    public Set<String> getGettableLinks() {
+        return this.gettableLinks;
+    }
+
+    public Set<String> getSubscribableLinks() {
+        return this.subscribableLinks;
     }
 
     /**
@@ -196,27 +274,26 @@ public class VizierNode {
         this.mqttClient.publish(responseLink, response);
     }
 
-    public static void main(String[] args) {
+//    public static void main(String[] args) {
 
-        try {
-            var f = new FileReader(args[0]);
-            var nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
+//        try {
+//            var f = new FileReader(args[0]);
+//            var nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
 
-            var result = Utils.parseNodeDescriptor(nodeDescriptor);
-            var result2 = Utils.parseNodeDescriptorRequests(nodeDescriptor);
+//            var result = Utils.parseNodeDescriptor(nodeDescriptor);
+//            var result2 = Utils.parseNodeDescriptorRequests(nodeDescriptor);
 
-            var node = new VizierNode("192.168.1.24", 1883, nodeDescriptor);
-            node.start();
+//            var node = new VizierNode("192.168.1.24", 1883, nodeDescriptor);
 
-            while (true) {
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+//            while (true) {
+//                try {
+//                    Thread.sleep(3000);
+//                } catch (InterruptedException e) {
+//                    e.printStackTrace();
+//                }
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
 }
