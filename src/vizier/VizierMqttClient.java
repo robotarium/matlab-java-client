@@ -2,13 +2,11 @@ package vizier;
 
 import org.eclipse.paho.client.mqttv3.*;
 
-import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.SynchronousQueue;
 import java.util.function.Consumer;
-import java.util.function.Function;
+import java.util.stream.Collectors;
 
 public class VizierMqttClient implements MqttCallback {
 
@@ -17,7 +15,7 @@ public class VizierMqttClient implements MqttCallback {
     private final int port;
     private final String id = "java_mqtt_" +  System.currentTimeMillis();
 
-    // For handling messages / callbacks
+    // Contains callbacks for particular topics.
     private final ConcurrentHashMap<String, Consumer<String>> callbacks = new ConcurrentHashMap<>();
 
     public VizierMqttClient(String host, int port) {
@@ -48,7 +46,7 @@ public class VizierMqttClient implements MqttCallback {
     }
 
     public void start() {
-
+        // TODO Really should move connect in here
     }
 
     public void stop() {
@@ -88,14 +86,13 @@ public class VizierMqttClient implements MqttCallback {
         final BlockingQueue<String> queue;
         queue = new LinkedBlockingQueue<>();
 
-        Consumer<String> callback = b -> {
+        Consumer<String> callback = (b) -> {
             try {
                 queue.put(b);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
         };
-
         this.subscribeWithCallback(topic, callback);
 
         return queue;
@@ -119,6 +116,8 @@ public class VizierMqttClient implements MqttCallback {
     @Override
     public void messageArrived(String s, MqttMessage mqttMessage) throws Exception {
 
+        // This series of operations should be thread safe, because the callback are contained in a concurrent
+        // structure.  One the callback has been obtained, it doesn't matter if the link is subsequently unsubscribed.
         var callback = this.callbacks.getOrDefault(s, null);
 
         if(callback != null) {
@@ -128,6 +127,6 @@ public class VizierMqttClient implements MqttCallback {
 
     @Override
     public void deliveryComplete(IMqttDeliveryToken iMqttDeliveryToken) {
-        //TODO Implement
+        //TODO Not used for now.
     }
 }

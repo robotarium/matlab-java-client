@@ -25,6 +25,13 @@ public class VizierNode {
 
     private final ThreadPoolExecutor pool = new ScheduledThreadPoolExecutor(8);
 
+    /**
+     * Creates a node on a vizier network.
+     *
+     * @param host IP for the MQTT broker
+     * @param port Port for the MQTT broker.
+     * @param nodeDescriptor Node descrioptor in the required Vizier format.
+     */
     public VizierNode(String host, int port, JsonObject nodeDescriptor) {
 
         this.endpoint = nodeDescriptor.get("end_point").getAsString();
@@ -33,57 +40,88 @@ public class VizierNode {
 
         this.mqttClient = new VizierMqttClient(host, port);
 
+        // Set up the local request handler method to receive all requests for the node.
         Consumer<String> requestHandler = (r) -> this.handleRequest(r);
         this.mqttClient.subscribeWithCallback(Utils.createRequestLink(this.endpoint), requestHandler);
     }
 
-    public void verify(int attempts, int timeout) {
+    /**
+     * Verifies that all required links are currently available on the network.  Required links are indicated by the
+     * node descriptor.
+     *
+     * @param attempts Number of times to attempt each GET request.
+     * @param timeout Timeout for each of the GET requests.
+     * Returns true if all required links are present.  False otherwise.
+     * */
+    public boolean verify(int attempts, int timeout) {
 
+        // Names of the links to verify.  This list is only used for error-reporting purposes, if one of the required
+        // links cannot be obtained.
         List<String> toVerifyNames = requests.stream()
                 .filter((x) -> x.isRequired())
                 .map((x) -> x.getLink())
                 .collect(Collectors.toList());
 
+        // Links from the parsed node descriptor that are tagged as required.  Executes requests for required links in
+        // parallel.
         List<Response> toVerify
                 = requests.stream().filter((r) -> r.isRequired())
+                .parallel()
                 .map((LinkRequestDescriptor x) -> this.makeGetRequest(x.getLink(), attempts, timeout))
                 .collect(Collectors.toList());
 
+        // Check that all of the required links are associated with a successful GET request.
         for(int i = 0; i < toVerify.size(); i++) {
-
             if(toVerify.get(i) == null) {
                 // Could not GET a required request.  Report an error
-                throw new IllegalStateException(String.format("Could not retrieve request for topic (%s)", toVerifyNames.get(i)));
+                System.err.println(String.format("Could not retrieve request for topic (%s)", toVerifyNames.get(i)));
+                //throw new IllegalStateException(String.format();
+                return false;
             }
+        }
+
+        return true;
+    }
+
+    /**
+     * Starts all underlying threaded objects for the node and verifies required links.
+     */
+    public void start() {
+        this.mqttClient.start();
+        boolean connected = this.verify(10, 5000);
+
+        if(!connected) {
+            throw new IllegalStateException("Could not retrieve all required links.");
         }
     }
 
-    public void start() {
-        this.mqttClient.start();
-        this.verify(10, 5000);
-    }
-
+    /**
+     * Stops all thread-bound tasks associated with this object.
+     */
     public void stop() {
         this.mqttClient.stop();
     }
 
     /**
-     * Makes a vizier-style request on a particular link.
+     * Makes a vizier-style GET request on a particular link.  GET requests are a coordinated communication between
+     * this node and the requested node.  In particular, a JSON-formatted GET request is sent on the link
+     * requestEndpoint/link/requests.  Responses are sent on the link requestEndpoint/link/messageId.
      *
      * @param attempts
      * @param timeout
      */
     private Response makeGetRequest(String link, int attempts, int timeout) {
+        //TODO should make this into a general request structure, rather than just for GET requests.
 
         String messageId = Utils.createMessageId();
-
         String request = Utils.createJsonRequest(messageId, link, "GET");
 
         String remoteEndpoint = link.split("/")[0];
         String remoteRequestLink = Utils.createRequestLink(remoteEndpoint);
         String remoteResponseLink = Utils.createResponseLink(remoteEndpoint, messageId);
 
-        // Start request-response process
+        // Start request-response process.  In particular, the node must subscribe to the response channel before
+        // sending the request to ensure that the response is not missed.
         BlockingQueue<String> incomingMessages = this.mqttClient.subscribeWithQueue(remoteResponseLink);
         String message = null;
 
