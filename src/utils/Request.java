@@ -13,6 +13,18 @@ public class Request {
         this.method = method;
         this.link = link;
     }
+
+    public String getId() {
+        return id;
+    }
+
+    public String getMethod() {
+        return method;
+    }
+
+    public String getLink() {
+        return link;
+    }
 }
 
 

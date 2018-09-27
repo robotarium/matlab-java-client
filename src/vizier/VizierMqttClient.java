@@ -2,11 +2,10 @@ package vizier;
 
 import org.eclipse.paho.client.mqttv3.*;
 
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.*;
 import java.util.function.Consumer;
-import java.util.stream.Collectors;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class VizierMqttClient implements MqttCallback {
 
@@ -14,8 +13,10 @@ public class VizierMqttClient implements MqttCallback {
     private final String host;
     private final int port;
     private final String id = "java_mqtt_" +  System.currentTimeMillis();
+    private final Logger logger = Logger.getGlobal();
 
     // Contains callbacks for particular topics.
+    private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(2);
     private final ConcurrentHashMap<String, Consumer<String>> callbacks = new ConcurrentHashMap<>();
 
     public VizierMqttClient(String host, int port) {
@@ -28,7 +29,10 @@ public class VizierMqttClient implements MqttCallback {
         try {
             this.client = new MqttClient(uri, id);
         } catch (MqttException e) {
+            var msg = String.format("Could not instantiate MQTT client to host (%s) at port (%i)", host, port);
+            this.logger.log(Level.SEVERE, msg, e);
             e.printStackTrace();
+            throw new IllegalStateException();
         }
 
         this.client.setCallback(this);
@@ -40,34 +44,55 @@ public class VizierMqttClient implements MqttCallback {
             try {
                 this.client.connect(options);
             } catch (MqttException e) {
+                var msg = String.format("Could not connect to broker on host (%s) port (%i)", this.host, this.port);
+                this.logger.log(Level.SEVERE, msg);
                 e.printStackTrace();
+                throw new IllegalStateException();
             }
         }
     }
 
-    public void start() {
-        // TODO Really should move connect in here
-    }
+    public void shutdown() {
 
-    public void stop() {
+        boolean success = true;
         try {
-            this.client.disconnect();
+            this.client.disconnect(1000);
         } catch (MqttException e) {
             e.printStackTrace();
+            this.logger.log(Level.WARNING, "Could not disconnect MQTT client.");
+            success = false;
         }
-    }
 
-    public void publish(String topic, String message) {
+        if(success) {
+            return;
+        }
 
-        var mqttMessage = new MqttMessage(message.getBytes());
-        mqttMessage.setQos(0);
-
+        // Else, we couldn't disconnect from the server.
         try {
-            this.client.publish(topic, mqttMessage);
+            this.client.disconnectForcibly(1000);
+            success = true;
         } catch (MqttException e) {
-            System.err.println("Unable to publish MQTT message");
+            this.logger.log(Level.SEVERE, "Could not forcibly disconnect MQTT client.");
             e.printStackTrace();
         }
+
+        this.executor.shutdown();
+    }
+
+    public void publish(final String topic, final String message) {
+
+        this.executor.execute(() -> {
+            try {
+                if (message != null) {
+                    this.client.publish(topic, message.getBytes(), 0, false);
+                } else {
+                    this.logger.log(Level.WARNING, "Attempted to publish null message");
+                }
+            } catch (MqttException e) {
+                this.logger.log(Level.WARNING, "Could not publish message.");
+                e.printStackTrace();
+            }
+        });
     }
 
     public void subscribeWithCallback(String topic, Consumer<String> callback) {
@@ -128,5 +153,16 @@ public class VizierMqttClient implements MqttCallback {
     @Override
     public void deliveryComplete(IMqttDeliveryToken iMqttDeliveryToken) {
         //TODO Not used for now.
+    }
+
+    private class MessagePair {
+
+        public final String topic;
+        public final String message;
+
+        public MessagePair(String topic, String message) {
+            this.topic = topic;
+            this.message = message;
+        }
     }
 }

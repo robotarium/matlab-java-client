@@ -1,12 +1,10 @@
 package vizier;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import utils.LinkDescriptor;
-import utils.LinkRequestDescriptor;
-import utils.Response;
-import utils.Utils;
+import utils.*;
 
 import java.io.FileReader;
 import java.io.IOException;
@@ -14,16 +12,19 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.function.Consumer;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class VizierNode {
 
-    private VizierMqttClient mqttClient;
+    public VizierMqttClient mqttClient;
     private ConcurrentHashMap<String, LinkDescriptor> nodeDescriptor;
     private ArrayList<LinkRequestDescriptor> requests;
     private String endpoint;
 
     private final ThreadPoolExecutor pool = new ScheduledThreadPoolExecutor(8);
+    private final Logger logger = Logger.getGlobal();
 
     /**
      * Creates a node on a vizier network.
@@ -43,6 +44,13 @@ public class VizierNode {
         // Set up the local request handler method to receive all requests for the node.
         Consumer<String> requestHandler = (r) -> this.handleRequest(r);
         this.mqttClient.subscribeWithCallback(Utils.createRequestLink(this.endpoint), requestHandler);
+
+        boolean connected = this.verify(10, 5000);
+
+        if(!connected) {
+            var msg = "Could not retrieve all required links as noted in descriptor";
+            logger.log(Level.SEVERE, msg, new IllegalStateException());
+        }
     }
 
     /**
@@ -87,19 +95,14 @@ public class VizierNode {
      * Starts all underlying threaded objects for the node and verifies required links.
      */
     public void start() {
-        this.mqttClient.start();
-        boolean connected = this.verify(10, 5000);
 
-        if(!connected) {
-            throw new IllegalStateException("Could not retrieve all required links.");
-        }
     }
 
     /**
      * Stops all thread-bound tasks associated with this object.
      */
-    public void stop() {
-        this.mqttClient.stop();
+    public void shutdown() {
+        this.mqttClient.shutdown();
     }
 
     /**
@@ -125,27 +128,20 @@ public class VizierNode {
         BlockingQueue<String> incomingMessages = this.mqttClient.subscribeWithQueue(remoteResponseLink);
         String message = null;
 
-        System.out.println(remoteResponseLink);
-
         for (int i = 0; i < attempts; i++){
             this.mqttClient.publish(remoteRequestLink, request);
             try {
-
-                System.out.println("Waiting for message...");
                 message = incomingMessages.poll(timeout, TimeUnit.MILLISECONDS);
             } catch (InterruptedException e) {
-                System.err.println("Could not retrieve quest");
+                this.logger.log(Level.INFO, "Could not retrieve request for attempted link.  Reattempting...");
                 e.printStackTrace();
             }
 
             if(message != null) {
+                // We successfully retrieved the request, so we can break out of the loop.
                 break;
             }
-
-            System.out.println("retry");
         }
-
-        System.out.println("Got here");
 
         this.mqttClient.unsubscribe(remoteResponseLink);
 
@@ -153,9 +149,7 @@ public class VizierNode {
             return null;
         }
 
-        System.out.println(message);
-
-        // Otherwise, we got the response
+        // Otherwise, we got the response.  Decode it and return a response.
         return new Gson().fromJson(message, Response.class);
     }
 
@@ -164,12 +158,13 @@ public class VizierNode {
      */
     private void handleRequest(String msg) {
 
-        JsonObject jsonMsg = new JsonParser().parse(msg).getAsJsonObject();
+        //JsonObject jsonMsg = new JsonParser().parse(msg).getAsJsonObject();
+        Request request = new Gson().fromJson(msg, Request.class);
 
         // Verify that message contains required fields
-        String id = jsonMsg.get("id").getAsString();
-        String method = jsonMsg.get("method").getAsString();
-        String link = jsonMsg.get("method").getAsString();
+        String id = request.getId();
+        String method = request.getMethod();
+        String link = request.getLink();
 
         if(id == null) {
             // TODO Handle error
@@ -187,17 +182,18 @@ public class VizierNode {
         }
 
         // Otherwise, proceed with response
-        if(this.nodeDescriptor.containsKey(link)) {
-           // Respond with error
-           return;
+        if(!this.nodeDescriptor.containsKey(link)) {
+            // Respond with error
+            this.logger.log(Level.WARNING, "Received GET request for link (%s) not contained here", link);
+            return;
         }
 
         // Else, the key is in the data that we currently have
-
         LinkDescriptor ld = this.nodeDescriptor.get(link);
+        String responseLink = Utils.createResponseLink(this.endpoint, id);
 
         String response = Utils.createJsonResponse(ld.getType(), 400, ld.getBody());
-        this.mqttClient.publish(Utils.createResponseLink(this.endpoint, id), response);
+        this.mqttClient.publish(responseLink, response);
     }
 
     public static void main(String[] args) {
@@ -211,8 +207,14 @@ public class VizierNode {
 
             var node = new VizierNode("192.168.1.24", 1883, nodeDescriptor);
             node.start();
-            node.stop();
 
+            while (true) {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }

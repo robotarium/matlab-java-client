@@ -1,17 +1,15 @@
 package utils;
 
-import com.google.gson.*;
+import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
 
-import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Random;
-import java.util.stream.Stream;
 
 public class Utils {
 
@@ -53,7 +51,7 @@ public class Utils {
         }
 
         for(int i = 0; i < one.size(); i++) {
-            if(one.get(i) != two.get(i)) {
+            if(!one.get(i).equals(two.get(i))) {
                 return false;
             }
         }
@@ -80,7 +78,7 @@ public class Utils {
         HashMap<String, LinkDescriptor> result = new HashMap<>();
 
         // base case
-        if(links == null) {
+        if(links == null || links.entrySet().isEmpty()) {
             if(body.get("type") == null) {
                 throw new IllegalArgumentException("Leaf must contain type");
             }
@@ -108,6 +106,8 @@ public class Utils {
             } else {
                 if(isSubsetOf(path, pathHere)) {
                     newPath = pathHere;
+                } else {
+                    throw new IllegalArgumentException("Path must be subset of current path");
                 }
             }
 
