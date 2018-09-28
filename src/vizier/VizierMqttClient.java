@@ -29,7 +29,7 @@ public class VizierMqttClient implements MqttCallback {
         try {
             this.client = new MqttClient(uri, id);
         } catch (MqttException e) {
-            var msg = String.format("Could not instantiate MQTT client to host (%s) at port (%i)", host, port);
+            String msg = String.format("Could not instantiate MQTT client to host (%s) at port (%i)", host, port);
             this.logger.log(Level.SEVERE, msg, e);
             e.printStackTrace();
             throw new IllegalStateException();
@@ -44,7 +44,7 @@ public class VizierMqttClient implements MqttCallback {
             try {
                 this.client.connect(options);
             } catch (MqttException e) {
-                var msg = String.format("Could not connect to broker on host (%s) port (%i)", this.host, this.port);
+                String msg = String.format("Could not connect to broker on host (%s) port (%i)", this.host, this.port);
                 this.logger.log(Level.SEVERE, msg);
                 e.printStackTrace();
                 throw new IllegalStateException();
@@ -143,7 +143,7 @@ public class VizierMqttClient implements MqttCallback {
 
         // This series of operations should be thread safe, because the callback are contained in a concurrent
         // structure.  One the callback has been obtained, it doesn't matter if the link is subsequently unsubscribed.
-        var callback = this.callbacks.getOrDefault(s, null);
+        Consumer<String> callback = this.callbacks.getOrDefault(s, null);
 
         if(callback != null) {
             callback.accept(new String(mqttMessage.getPayload()));

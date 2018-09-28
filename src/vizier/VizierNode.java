@@ -4,8 +4,6 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import utils.*;
 
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -73,7 +71,7 @@ public class VizierNode {
         boolean connected = this.verify(10, 5000);
 
         if(!connected) {
-            var msg = "Could not retrieve all required links as noted in descriptor";
+            String msg = "Could not retrieve all required links as noted in descriptor";
             logger.log(Level.SEVERE, msg, new IllegalStateException());
         }
     }

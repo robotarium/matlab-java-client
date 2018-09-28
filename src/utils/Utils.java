@@ -2,14 +2,10 @@ package utils;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.Random;
+import java.util.*;
 
 public class Utils {
 
@@ -34,13 +30,13 @@ public class Utils {
 
     public static String createJsonRequest(String id, String link, String method) {
 
-        var r = new Request(id, method, link);
+        Request r = new Request(id, method, link);
         return new Gson().toJson(r, Request.class);
     }
 
     public static String createJsonResponse(String type, int status, String body) {
 
-        var r = new Response(type, status, body);
+        Response r = new Response(type, status, body);
         return new Gson().toJson(r);
     }
 
@@ -90,9 +86,10 @@ public class Utils {
             return result;
         }
 
-        var toVisit = links.entrySet();
 
-        for (var x: toVisit) {
+        Set<Map.Entry<String, JsonElement>> toVisit = links.entrySet();
+
+        for (Map.Entry<String, JsonElement> x: toVisit) {
             String link = x.getKey();
 
             ArrayList<String> newPath = null;
@@ -126,8 +123,8 @@ public class Utils {
             return requests;
         }
 
-        for (var x : requestsJson) {
-           var request = new Gson().fromJson(x, LinkRequestDescriptor.class);
+        for (JsonElement x : requestsJson) {
+           LinkRequestDescriptor request = new Gson().fromJson(x, LinkRequestDescriptor.class);
 
            if(request.getType() == null) {
                throw new IllegalArgumentException("Must have type fields specified in request");
@@ -144,19 +141,19 @@ public class Utils {
         return requests;
     }
 
-    public static void main(String[] args) {
+//    public static void main(String[] args) {
 
-        try {
-            var f = new FileReader(args[0]);
-            var nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
+//        try {
+//            var f = new FileReader(args[0]);
+//            var nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
 
-            var result = parseNodeDescriptor(nodeDescriptor);
-            var result2 = parseNodeDescriptorRequests(nodeDescriptor);
+//            var result = parseNodeDescriptor(nodeDescriptor);
+//            var result2 = parseNodeDescriptorRequests(nodeDescriptor);
 
-            System.out.println(result);
-            System.out.println(result2);
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+//            System.out.println(result);
+//            System.out.println(result2);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
 }
