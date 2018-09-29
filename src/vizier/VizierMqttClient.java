@@ -15,8 +15,39 @@ public class VizierMqttClient implements MqttCallback {
     private final String id = "java_mqtt_" +  System.currentTimeMillis();
     private final Logger logger = Logger.getGlobal();
 
+    private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(1);
+
+    // Set up publishing thread
+    private final LinkedBlockingQueue<MessagePair> toPublish = new LinkedBlockingQueue<>();
+    Runnable r = () -> {
+        while(true) {
+            MessagePair msg = null;
+            try {
+                msg = toPublish.take();
+            } catch (InterruptedException e) {
+                this.logger.log(Level.WARNING, "Publish task interrupted.");
+                e.printStackTrace();
+                // Continue in the loop
+                continue;
+            }
+
+            if (msg == null) {
+                this.logger.log(Level.INFO, "Got null message. Terminating publish task");
+                return;
+            }
+
+            // Else, if we have a good message
+            try {
+                this.client.publish(msg.topic, msg.message.getBytes(), 0, false);
+            } catch (MqttException e) {
+                this.logger.log(Level.WARNING, "Could not publish MQTT message.");
+                e.printStackTrace();
+            }
+        }
+    };
+    private final Future<?>  taskFuture = executor.submit(r);
+
     // Contains callbacks for particular topics.
-    private final ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(2);
     private final ConcurrentHashMap<String, Consumer<String>> callbacks = new ConcurrentHashMap<>();
 
     public VizierMqttClient(String host, int port) {
@@ -52,8 +83,12 @@ public class VizierMqttClient implements MqttCallback {
         }
     }
 
+    /**
+     * Shutdown the MQTT client, ending all background threads.
+     *
+     * Disconnects the MQTT client, shutdown the executor, and stops the publishing thread.
+     */
     public void shutdown() {
-
         boolean success = true;
         try {
             this.client.disconnect(1000);
@@ -77,37 +112,37 @@ public class VizierMqttClient implements MqttCallback {
         }
 
         this.executor.shutdown();
+        // Putting null in this queue should cause the task to cease
+        try {
+            this.toPublish.put(null);
+        } catch (InterruptedException e) {
+            this.logger.log(Level.SEVERE, "Interrupted while cancelling publish task");
+            e.printStackTrace();
+        }
+        // Cancel the future that we're running
+        this.taskFuture.cancel(true);
     }
 
     public void publish(final String topic, final String message) {
-
-        this.executor.execute(() -> {
-            try {
-                if (message != null) {
-                    this.client.publish(topic, message.getBytes(), 0, false);
-                } else {
-                    this.logger.log(Level.WARNING, "Attempted to publish null message");
-                }
-            } catch (MqttException e) {
-                this.logger.log(Level.WARNING, "Could not publish message.");
-                e.printStackTrace();
-            }
-        });
+        try {
+            this.toPublish.put(new MessagePair(topic, message));
+        } catch (InterruptedException e) {
+            this.logger.log(Level.WARNING, "Interrupted");
+            e.printStackTrace();
+        }
     }
 
     public void subscribeWithCallback(String topic, Consumer<String> callback) {
-
         try {
             this.client.subscribe(topic);
             this.callbacks.put(topic, callback);
         } catch (MqttException e) {
-            System.err.println("Could not subscribe to topic");
+            this.logger.log(Level.SEVERE, "Could not subscribe to topic.");
             e.printStackTrace();
         }
     }
 
     public BlockingQueue<String> subscribe(String topic) {
-
         final BlockingQueue<String> queue;
         queue = new LinkedBlockingQueue<>();
 
