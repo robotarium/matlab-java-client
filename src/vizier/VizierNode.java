@@ -4,7 +4,11 @@ import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import utils.*;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -15,9 +19,9 @@ import java.util.stream.Collectors;
 
 public class VizierNode {
 
-    public VizierMqttClient mqttClient;
+    private VizierMqttClient mqttClient;
     private ConcurrentHashMap<String, LinkDescriptor> nodeDescriptor;
-    private ArrayList<LinkRequestDescriptor> requests;
+    public ArrayList<LinkRequestDescriptor> requests;
     private String endpoint;
 
     private final ThreadPoolExecutor pool = new ScheduledThreadPoolExecutor(8);
@@ -43,22 +47,22 @@ public class VizierNode {
 
         // Determine the 4 classes of links
         this.puttableLinks = this.nodeDescriptor.entrySet().stream()
-                .filter((x) -> x.getValue().getType() == "DATA")
+                .filter((x) -> x.getValue().getType().equals("DATA"))
                 .map((x) -> x.getKey())
                 .collect(Collectors.toSet());
 
         this.publishableLinks = this.nodeDescriptor.entrySet().stream()
-                .filter((x) -> x.getValue().getType() == "STREAM")
+                .filter((x) -> x.getValue().getType().equals("STREAM"))
                 .map((x) -> x.getKey())
                 .collect(Collectors.toSet());
 
         this.gettableLinks = this.requests.stream()
-                .filter((x) -> x.getType() == "DATA")
+                .filter((x) -> x.getType().equals("DATA"))
                 .map((x) -> x.getLink())
                 .collect(Collectors.toSet());
 
         this.subscribableLinks = this.requests.stream()
-                .filter((x) -> x.getType() == "STREAM")
+                .filter((x) -> x.getType().equals("STREAM"))
                 .map((x) -> x.getLink())
                 .collect(Collectors.toSet());
 
@@ -68,7 +72,7 @@ public class VizierNode {
         Consumer<String> requestHandler = (r) -> this.handleRequest(r);
         this.mqttClient.subscribeWithCallback(Utils.createRequestLink(this.endpoint), requestHandler);
 
-        boolean connected = this.verify(10, 5000);
+        boolean connected = this.verify(10, 250);
 
         if(!connected) {
             String msg = "Could not retrieve all required links as noted in descriptor";
@@ -142,6 +146,7 @@ public class VizierNode {
         // Start request-response process.  In particular, the node must subscribe to the response channel before
         // sending the request to ensure that the response is not missed.
         BlockingQueue<String> incomingMessages = this.mqttClient.subscribe(remoteResponseLink);
+
         String message = null;
 
         for (int i = 0; i < attempts; i++){
@@ -272,26 +277,27 @@ public class VizierNode {
         this.mqttClient.publish(responseLink, response);
     }
 
-//    public static void main(String[] args) {
+    public static void main(String[] args) {
 
-//        try {
-//            var f = new FileReader(args[0]);
-//            var nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
+        String path = "/home/robotarium-workstation/git/robotarium_nodes_docker/services/matlab_api/config/node_desc_api.json";
 
-//            var result = Utils.parseNodeDescriptor(nodeDescriptor);
-//            var result2 = Utils.parseNodeDescriptorRequests(nodeDescriptor);
+        try {
+            FileReader f = new FileReader(path);
+            JsonObject nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
 
-//            var node = new VizierNode("192.168.1.24", 1883, nodeDescriptor);
+            VizierNode node = new VizierNode("192.168.1.5", 1884, nodeDescriptor);
 
-//            while (true) {
-//                try {
-//                    Thread.sleep(3000);
-//                } catch (InterruptedException e) {
-//                    e.printStackTrace();
-//                }
-//            }
-//        } catch (IOException e) {
-//            e.printStackTrace();
-//        }
-//    }
+            System.out.println(node.getSubscribableLinks());
+
+            while (true) {
+                try {
+                    Thread.sleep(3000);
+                } catch (InterruptedException e) {
+                    e.printStackTrace();
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
 }
