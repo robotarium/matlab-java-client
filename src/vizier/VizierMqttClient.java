@@ -75,7 +75,7 @@ public class VizierMqttClient implements MqttCallback {
             try {
                 this.client.connect(options);
             } catch (MqttException e) {
-                String msg = String.format("Could not connect to broker on host (%s) port (%i)", this.host, this.port);
+                String msg = String.format("Could not connect to broker on host (%s) port (%d)", this.host, this.port);
                 this.logger.log(Level.SEVERE, msg);
                 e.printStackTrace();
                 throw new IllegalStateException();
@@ -89,29 +89,25 @@ public class VizierMqttClient implements MqttCallback {
      * Disconnects the MQTT client, shutdown the executor, and stops the publishing thread.
      */
     public void shutdown() {
-        boolean success = true;
+        boolean failed = true;
         try {
             this.client.disconnect(1000);
         } catch (MqttException e) {
             e.printStackTrace();
             this.logger.log(Level.WARNING, "Could not disconnect MQTT client.");
-            success = false;
+            failed = false;
         }
 
-        if(success) {
-            return;
+        if(failed) {
+            // Else, we couldn't disconnect from the server.
+            try {
+                this.client.disconnectForcibly(1000);
+            } catch (MqttException e) {
+                this.logger.log(Level.SEVERE, "Could not forcibly disconnect MQTT client.");
+                e.printStackTrace();
+            }
         }
 
-        // Else, we couldn't disconnect from the server.
-        try {
-            this.client.disconnectForcibly(1000);
-            success = true;
-        } catch (MqttException e) {
-            this.logger.log(Level.SEVERE, "Could not forcibly disconnect MQTT client.");
-            e.printStackTrace();
-        }
-
-        this.executor.shutdown();
         // Putting null in this queue should cause the task to cease
         try {
             this.toPublish.put(null);
@@ -121,6 +117,8 @@ public class VizierMqttClient implements MqttCallback {
         }
         // Cancel the future that we're running
         this.taskFuture.cancel(true);
+        // Finally, shutdown the executor
+        this.executor.shutdown();
     }
 
     public void publish(final String topic, final String message) {
@@ -133,6 +131,7 @@ public class VizierMqttClient implements MqttCallback {
     }
 
     public void subscribeWithCallback(String topic, Consumer<String> callback) {
+        // TODO Make concurrent!!! Add synchronized to callbacks?
         try {
             this.client.subscribe(topic);
             this.callbacks.put(topic, callback);
@@ -159,7 +158,7 @@ public class VizierMqttClient implements MqttCallback {
     }
 
     public void unsubscribe(String topic) {
-
+        //TODO Make concurrent!! Add synchronized?
         try {
             this.client.unsubscribe(topic);
             this.callbacks.remove(topic);

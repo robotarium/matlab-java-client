@@ -20,9 +20,9 @@ import java.util.stream.Collectors;
 public class VizierNode {
 
     private VizierMqttClient mqttClient;
-    private ConcurrentHashMap<String, LinkDescriptor> nodeDescriptor;
-    public ArrayList<LinkRequestDescriptor> requests;
-    private String endpoint;
+    private final ConcurrentHashMap<String, LinkDescriptor> nodeDescriptor;
+    private final ArrayList<LinkRequestDescriptor> requests;
+    private final String endpoint;
 
     private final ThreadPoolExecutor pool = new ScheduledThreadPoolExecutor(8);
     private final Logger logger = Logger.getGlobal();
@@ -235,6 +235,9 @@ public class VizierNode {
     }
 
     /**
+     * This method is called to handle incoming requests on the link end_point/requests.  Automatically subscribed on
+     * startup.
+     *
      * @param msg The incoming message from the MQTT client
      */
     private void handleRequest(String msg) {
@@ -275,29 +278,5 @@ public class VizierNode {
 
         String response = Utils.createJsonResponse(ld.getType(), 400, ld.getBody());
         this.mqttClient.publish(responseLink, response);
-    }
-
-    public static void main(String[] args) {
-
-        String path = "/home/robotarium-workstation/git/robotarium_nodes_docker/services/matlab_api/config/node_desc_api.json";
-
-        try {
-            FileReader f = new FileReader(path);
-            JsonObject nodeDescriptor = new Gson().fromJson(f, JsonObject.class);
-
-            VizierNode node = new VizierNode("192.168.1.5", 1884, nodeDescriptor);
-
-            System.out.println(node.getSubscribableLinks());
-
-            while (true) {
-                try {
-                    Thread.sleep(3000);
-                } catch (InterruptedException e) {
-                    e.printStackTrace();
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 }
