@@ -2,7 +2,6 @@ package vizier;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import utils.*;
 
 import java.util.ArrayList;
@@ -15,6 +14,10 @@ import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
 public class VizierNode {
+
+    public enum RequestMethods {
+        GET
+    }
 
     private VizierMqttClient mqttClient;
     private final ConcurrentHashMap<String, LinkDescriptor> linkData;
@@ -106,7 +109,7 @@ public class VizierNode {
         List<Response> toVerify
                 = requests.stream().filter((r) -> r.isRequired())
                 .parallel()
-                .map((LinkRequestDescriptor x) -> this.makeGetRequest(x.getLink(), attempts, timeout))
+                .map((LinkRequestDescriptor x) -> this.makeRequest(x.getLink(), RequestMethods.GET, attempts, timeout))
                 .collect(Collectors.toList());
 
         // Check that all of the required links are associated with a successful GET request.
@@ -137,11 +140,18 @@ public class VizierNode {
      * @param attempts
      * @param timeout
      */
-    private Response makeGetRequest(String link, int attempts, int timeout) {
+    private Response makeRequest(String link, RequestMethods requestMethod, int attempts, int timeout) {
         //TODO should make this into a general request structure, rather than just for GET requests.
 
+        String method = null;
+        switch(requestMethod) {
+            case GET:
+                method = "GET";
+                break;
+        }
+
         String messageId = Utils.createMessageId();
-        String request = Utils.createJsonRequest(messageId, link, "GET");
+        String request = Utils.createJsonRequest(messageId, link, method);
 
         String remoteEndpoint = link.split("/")[0];
         String remoteRequestLink = Utils.createRequestLink(remoteEndpoint);
@@ -220,6 +230,18 @@ public class VizierNode {
             String errorMsg = String.format("Cannot put to link (%s) not in puttable links.", topic);
             this.logger.severe(errorMsg);
             throw new IllegalStateException();
+        }
+    }
+
+    public String get(String link, int attempts, int timeout) {
+        if(this.gettableLinks.contains(link)) {
+            // Make the request and return the body.
+            // TODO: Handle error!!!!
+            return this.makeRequest(link, RequestMethods.GET, 4, 250).getBody();
+        } else {
+            String errorMsg = String.format("Cannot get from link (%s) not in gettable links.", link);
+            this.logger.severe(errorMsg);
+            throw new IllegalStateException(errorMsg);
         }
     }
 
