@@ -2,13 +2,10 @@ package vizier;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import utils.*;
 
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.IOException;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
@@ -20,7 +17,8 @@ import java.util.stream.Collectors;
 public class VizierNode {
 
     private VizierMqttClient mqttClient;
-    private final ConcurrentHashMap<String, LinkDescriptor> nodeDescriptor;
+    private final ConcurrentHashMap<String, LinkDescriptor> linkData;
+    private final JsonObject nodeDescriptor;
     private final ArrayList<LinkRequestDescriptor> requests;
     private final String endpoint;
 
@@ -42,16 +40,19 @@ public class VizierNode {
     public VizierNode(String host, int port, JsonObject nodeDescriptor) {
 
         this.endpoint = nodeDescriptor.get("end_point").getAsString();
-        this.nodeDescriptor = new ConcurrentHashMap<>(Utils.parseNodeDescriptor(nodeDescriptor));
+        this.nodeDescriptor = nodeDescriptor;
+        this.linkData = new ConcurrentHashMap<>(Utils.parseNodeDescriptor(nodeDescriptor));
+        // Add node descriptor to link data
+        this.linkData.put(this.endpoint+"/node_descriptor", new LinkDescriptor(nodeDescriptor.toString(), "DATA"));
         this.requests = Utils.parseNodeDescriptorRequests(nodeDescriptor);
 
         // Determine the 4 classes of links
-        this.puttableLinks = this.nodeDescriptor.entrySet().stream()
+        this.puttableLinks = this.linkData.entrySet().stream()
                 .filter((x) -> x.getValue().getType().equals("DATA"))
                 .map((x) -> x.getKey())
                 .collect(Collectors.toSet());
 
-        this.publishableLinks = this.nodeDescriptor.entrySet().stream()
+        this.publishableLinks = this.linkData.entrySet().stream()
                 .filter((x) -> x.getValue().getType().equals("STREAM"))
                 .map((x) -> x.getKey())
                 .collect(Collectors.toSet());
@@ -60,6 +61,9 @@ public class VizierNode {
                 .filter((x) -> x.getType().equals("DATA"))
                 .map((x) -> x.getLink())
                 .collect(Collectors.toSet());
+
+        // Add node descriptor to gettable links
+        this.gettableLinks.add(this.endpoint+"/node_descriptor");
 
         this.subscribableLinks = this.requests.stream()
                 .filter((x) -> x.getType().equals("STREAM"))
@@ -208,12 +212,13 @@ public class VizierNode {
 
         if(this.puttableLinks.contains(topic)) {
 
-            LinkDescriptor current = this.nodeDescriptor.get(topic);
+            LinkDescriptor current = this.linkData.get(topic);
             LinkDescriptor modified = new LinkDescriptor(body, current.getType());
 
-            this.nodeDescriptor.put(topic, modified);
+            this.linkData.put(topic, modified);
         } else {
-            this.logger.log(Level.SEVERE, "Cannot put to link (%s) not in puttable links", topic);
+            String errorMsg = String.format("Cannot put to link (%s) not in puttable links.", topic);
+            this.logger.severe(errorMsg);
             throw new IllegalStateException();
         }
     }
@@ -266,17 +271,20 @@ public class VizierNode {
         }
 
         // Otherwise, proceed with response
-        if(!this.nodeDescriptor.containsKey(link)) {
-            // Respond with error
-            this.logger.log(Level.WARNING, "Received GET request for link (%s) not contained here", link);
-            return;
+        if(method.equals("GET")) {
+            if (!this.linkData.containsKey(link)) {
+                // Respond with error
+                String errorMsg = String.format("Received GET request for link (%s) not contained here", link);
+                this.logger.warning(errorMsg);
+                return;
+            }
+
+            // Else, the key is in the data that we currently have
+            LinkDescriptor ld = this.linkData.get(link);
+            String responseLink = Utils.createResponseLink(this.endpoint, id);
+
+            String response = Utils.createJsonResponse(ld.getType(), 400, ld.getBody());
+            this.mqttClient.publish(responseLink, response);
         }
-
-        // Else, the key is in the data that we currently have
-        LinkDescriptor ld = this.nodeDescriptor.get(link);
-        String responseLink = Utils.createResponseLink(this.endpoint, id);
-
-        String response = Utils.createJsonResponse(ld.getType(), 400, ld.getBody());
-        this.mqttClient.publish(responseLink, response);
     }
 }

@@ -9,6 +9,7 @@ import java.util.logging.Logger;
 
 public class VizierMqttClient implements MqttCallback {
 
+    private static final int MAX_OUTGOING = 100;
     private MqttClient client;
     private final String host;
     private final int port;
@@ -22,6 +23,11 @@ public class VizierMqttClient implements MqttCallback {
     Runnable r = () -> {
         while(true) {
             MessagePair msg = null;
+
+            if(toPublish.size() >= VizierMqttClient.MAX_OUTGOING) {
+                this.logger.log(Level.SEVERE, "Too many message in outgoing queue!");
+            }
+
             try {
                 msg = toPublish.take();
             } catch (InterruptedException e) {
