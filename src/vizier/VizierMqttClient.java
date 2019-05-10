@@ -64,9 +64,9 @@ public class VizierMqttClient implements MqttCallback {
         String uri = "tcp://" + this.host + ":" + this.port;
 
         try {
-            this.client = new MqttClient(uri, id);
+            this.client = new MqttClient(uri, id, null);
         } catch (MqttException e) {
-            String msg = String.format("Could not instantiate MQTT client to host (%s) at port (%i)", host, port);
+            String msg = String.format("Could not instantiate MQTT client to host (%s) at port (%d)", host, port);
             this.logger.log(Level.SEVERE, msg, e);
             e.printStackTrace();
             throw new IllegalStateException();

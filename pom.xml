@@ -22,6 +22,7 @@
 
     <!-- Package dependencies with .jar -->
     <build>
+	    <sourceDirectory>./src/</sourceDirectory>
         <plugins>
             <!-- any other plugins -->
             <plugin>
