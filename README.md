@@ -1,2 +1,2 @@
-# matlab-java-client
-Client for communicating with MQTT through Java to MATLAB
+# vizier_java
+Vizier protocol implementation in Java!
